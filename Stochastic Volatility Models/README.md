@@ -92,118 +92,86 @@ The lab contains two blocks.
 ```lab2.ipynb```
 # Heston Model & Calibration
 
-This repo/notebook contains a complete workflow for pricing and calibrating the **Heston stochastic volatility model** using the **COS (Fourier–cosine) method**, including truncation-range design, implied-vol conversion, calibration to synthetic market data, calibration with bid–ask spreads, and “smile + response” calibration across two dates.
+This notebook contains a complete workflow for pricing and calibrating the **Heston stochastic volatility model** using the **COS (Fourier–cosine) method**, including truncation-range design, implied-vol conversion, calibration to synthetic market data, calibration with bid–ask spreads, and “smile + response” calibration across two dates.
 
 ---
 
 ## 1) Model setup (Heston)
 
 Under the risk-neutral measure:
-\[
-\frac{dS_t}{S_t} = r\,dt + \sqrt{V_t}\,dW_t^{(1)},\qquad
+$$\frac{dS_t}{S_t} = r\,dt + \sqrt{V_t}\,dW_t^{(1)},\qquad
 dV_t = \kappa(\theta - V_t)\,dt + \sigma\sqrt{V_t}\,dW_t^{(2)},\qquad
-d\langle W^{(1)},W^{(2)}\rangle_t = \rho\,dt.
-\]
+d\langle W^{(1)},W^{(2)}\rangle_t = \rho\,dt$$
 
 Parameters:
-- \(v_0\): initial variance
-- \(\kappa\): mean-reversion speed
-- \(\theta\): long-run variance
-- \(\sigma\): vol-of-vol
-- \(\rho\): correlation
+- $v_0$: initial variance
+- $\kappa$: mean-reversion speed
+- $\theta$: long-run variance
+- $\sigma$: vol-of-vol
+- $\rho$: correlation
 
 We implemented:
 - `MarketState`, `HestonParams`, `StockOption` (call/put)
-- Heston **log-characteristic function** \(\log \phi_T(\omega)\)
+- Heston **log-characteristic function** $\log \phi_T(\omega)$
 
 ---
 
 ## 2) Pricing with COS method
 
-For a European payoff \(g(S_T)\):
-\[
-C = e^{-rT}\,\mathbb{E}[g(S_T)].
-\]
+For a European payoff $g(S_T)$:
+$$C = e^{-rT}\,\mathbb{E}[g(S_T)]$$
 
 COS approximation (Fang–Oosterlee):
-\[
-C\approx e^{-rT}\left(\frac{V_0}{2}+\sum_{n=1}^{N}\Re\left\{
-\phi_T\!\left(\frac{n\pi}{b-a}\right)\exp\!\left(-in\pi\frac{x-a}{b-a}\right)
-\right\}V_n\right),
-\]
-where \(x=\log(S_0/K)\) and \(V_n\) are payoff cosine coefficients (implemented analytically for vanilla put).
+$$C\approx e^{-rT} \bigl( \frac{V_0}{2}+\sum_{n=1}^{N}\Re \{ 
+\phi_T\ ( \frac{n\pi}{b-a})\exp\ ( -in\pi\frac{x-a}{b-a} ) 
+\} V_n \bigr)$$,
+where $x=\log(S_0/K)$ and $V_n$ are payoff cosine coefficients (implemented analytically for vanilla put).
 Call prices are obtained via put–call parity:
-\[
-C_{\text{call}} = C_{\text{put}} + S_0 - Ke^{-rT}.
-\]
+$$C_{\text{call}} = C_{\text{put}} + S_0 - Ke^{-rT}$$
 
 ---
 
-## 3) Truncation range \([a,b]\) (Task 1)
+## 3) Truncation range $[a,b]$ (Task 1)
 
-COS requires truncating the integration domain to \([a,b]\). We tested cumulant-based truncation rules.
+COS requires truncating the integration domain to $[a,b]$. We tested cumulant-based truncation rules.
 
-Cumulants from the log-CF:
-\[
-\left.\frac{d^n}{d\omega^n}\log\phi_T(\omega)\right|_{\omega=0} = i^n c_n
-\quad\Rightarrow\quad
-c_n=\left.\frac{1}{i^n}\frac{d^n}{d\omega^n}\log\phi_T(\omega)\right|_{\omega=0}.
-\]
+We used finite differences to approximate derivatives at $\omega=0$ and applied the Fang–Oosterlee rule:
+$$[a,b]=\left[c_1 - L\sqrt{c_2+\sqrt{c_4}},\; c_1 + L\sqrt{c_2+\sqrt{c_4}}\right],\qquad L\approx 10$$
 
-We used finite differences to approximate derivatives at \(\omega=0\) and applied the Fang–Oosterlee rule:
-\[
-[a,b]=\left[c_1 - L\sqrt{c_2+\sqrt{c_4}},\; c_1 + L\sqrt{c_2+\sqrt{c_4}}\right],\qquad L\approx 10.
-\]
-
-**Short-maturity test:** prices for calls and puts were plotted vs strike for \(T\in\{7d,1m,2m,3m\}\), comparing:
-- standard baseline (e.g. \(c_2\)-only rule),
-- cumulant rule using \(c_2\) and \(c_4\).
-
-**Stability adjustment:** to avoid \(b-a\to 0\) during optimization, we enforced a minimum half-width:
-\[
-\text{trunc\_range} \leftarrow \max(\text{trunc\_range}, \varepsilon_{\text{range}}),\qquad \varepsilon_{\text{range}}\approx 10^{-3}.
-\]
+**Short-maturity test:** prices for calls and puts were plotted vs strike for $T\in\{7d,1m,2m,3m\}$, comparing:
+- standard baseline (e.g. $c_2$-only rule),
+- cumulant rule using $c_2$ and $c_4$.
 
 ---
 
 ## 4) From price to Black implied volatility (IV)
 
 We compute forward and discount factors:
-\[
-F = S_0 e^{rT},\qquad DF=e^{-rT},\qquad C^{\text{undisc}} = \frac{C}{DF}.
-\]
+$$F = S_0 e^{rT},\qquad DF=e^{-rT},\qquad C^{\text{undisc}} = \frac{C}{DF}$$
 
 For a call, no-arbitrage bounds in forward measure:
-\[
-(F-K)^+ \le C^{\text{undisc}} \le F.
-\]
+$$(F-K)^+ \le C^{\text{undisc}} \le F$$
 
 Numerical COS pricing can slightly violate the lower bound, causing IV inversion failures.  
 We stabilized IV inversion by clipping:
-\[
-C^{\text{undisc}} \leftarrow \min\Big(\max(C^{\text{undisc}}, (F-K)^+ + \epsilon),\; F-\epsilon\Big),\qquad \epsilon\ll 1.
-\]
+$$C^{\text{undisc}} \leftarrow \min\Big(\max(C^{\text{undisc}}, (F-K)^+ + \epsilon),\; F-\epsilon\Big),\qquad \epsilon\ll 1$$
 
 ---
 
 ## 5) Calibration to IV surface (Task 2)
 
 Calibration objective (mean squared error in IV):
-\[
-\mathrm{Obj}=
+$$\mathrm{Obj}=
 \frac{1}{|\mathcal{T}|}\sum_{T\in\mathcal{T}}
 \frac{1}{|\mathcal{K}|}\sum_{K\in\mathcal{K}}
-\big(IV_{\text{data}}(T,K)-IV_{\text{model}}(T,K)\big)^2.
-\]
+\big(IV_{\text{data}}(T,K)-IV_{\text{model}}(T,K)\big)^2$$
 
 Implementation details:
-- Model IV is produced by **COS pricing → IV inversion** on the same \((T,K)\) grid.
+- Model IV is produced by **COS pricing → IV inversion** on the same $(T,K)$ grid.
 - Optimization: bounded `L-BFGS-B` with multiple starting points.
 - Optional **Feller regularization**:
-  \[
-  2\kappa\theta \ge \sigma^2,\quad
-  \text{penalty}=\alpha\max(0,\sigma^2-2\kappa\theta)^2.
-  \]
+  $$2\kappa\theta \ge \sigma^2,\quad
+  \text{penalty}=\alpha\max(0,\sigma^2-2\kappa\theta)^2$$
 
 Plots:
 - market IV points vs calibrated model IV curve
@@ -213,16 +181,14 @@ Plots:
 
 ## 6) Calibration with bid–ask spread (Task 3)
 
-Market provides \(IV_{\text{bid}}(T,K)\) and \(IV_{\text{ask}}(T,K)\).  
+Market provides $IV_{\text{bid}}(T,K)$ and $IV_{\text{ask}}(T,K)$.  
 Objective:
-\[
-\mathrm{Obj}_{BA}=
+$$\mathrm{Obj}_{BA}=
 \frac{1}{|\mathcal{T}|}\sum_{T\in\mathcal{T}}
 \frac{1}{|\mathcal{K}|}\sum_{K\in\mathcal{K}}
 \frac{1}{2}\Big[
 (IV_{\text{bid}}-IV_{\text{model}})^2 + (IV_{\text{ask}}-IV_{\text{model}})^2
-\Big].
-\]
+\Big]$$
 
 Result visualization:
 - bid and ask IV points (different markers)
@@ -232,44 +198,34 @@ Result visualization:
 
 ## 7) Smile + response calibration (Task 4)
 
-We observe one maturity \(T\) but two dates:
-- at \(t\): spot \(S_t\) and IV smile \(IV_t(K)\)
-- at \(t+1\): spot \(S_{t+1}\) and smile \(IV_{t+1}(K)\)
+We observe one maturity $T$ but two dates:
+- at $t$: spot $S_t$ and IV smile $IV_t(K)$
+- at $t+1$: spot $S_{t+1}$ and smile $IV_{t+1}(K)$
 
 We calibrate **one common parameter set** to satisfy:
-1) fit the smile at \(t\)
-2) match the **IV response** due to spot move \(S_t\to S_{t+1}\)
+1) fit the smile at $t$
+2) match the **IV response** due to spot move $S_t\to S_{t+1}$
 
 Define market and model responses:
-\[
-\Delta IV_{\text{mkt}}(K)=IV_{t+1}(K)-IV_t(K),
+$$\Delta IV_{\text{mkt}}(K)=IV_{t+1}(K)-IV_t(K),
 \qquad
-\Delta IV_{\text{model}}(K)=IV_{\text{model}}(K;S_{t+1})-IV_{\text{model}}(K;S_t).
-\]
-
-Joint objective:
-\[
-\mathrm{Obj}_{resp}(\theta)=
-\underbrace{\frac{1}{|\mathcal{K}|}\sum_K\big(IV_t(K)-IV_{\text{model}}(K;S_t)\big)^2}_{\text{fit today}}
-+
-\lambda\underbrace{\frac{1}{|\mathcal{K}|}\sum_K\big(\Delta IV_{\text{mkt}}(K)-\Delta IV_{\text{model}}(K)\big)^2}_{\text{fit response}}.
-\]
+\Delta IV_{\text{model}}(K)=IV_{\text{model}}(K;S_{t+1})-IV_{\text{model}}(K;S_t)$$
 
 Outputs:
-- plot of \(IV_t(K)\) and \(IV_{t+1}(K)\) with corresponding model curves
-- plot of \(\Delta IV(K)\) (market vs model)
+- plot of $IV_t(K)$ and $IV_{t+1}(K)$ with corresponding model curves
+- plot of $\Delta IV(K)$ (market vs model)
 
 Interpretation:
-- Heston typically yields a **smooth** \(\Delta IV(K)\) response.
-- Market \(\Delta IV(K)\) can be more strike-dependent; \(\lambda\) controls the trade-off between smile fit and response fit.
+- Heston typically yields a **smooth** $\Delta IV(K)$ response.
+- Market $\Delta IV(K)$ can be more strike-dependent; $\lambda$ controls the trade-off between smile fit and response fit.
 
 ---
 
 ## Notes / Troubleshooting
 
-- **IV inversion errors (BelowIntrinsic):** fixed by enforcing call bounds \((F-K)^+\le C^{undisc}\le F\).
+- **IV inversion errors (BelowIntrinsic):** fixed by enforcing call bounds $(F-K)^+\le C^{undisc}\le F$.
 - **COS divide-by-zero / NaNs during calibration:** prevented by enforcing a minimum truncation width.
-- **Notebook viewer issue (.ipynb shown as JSON):** the file is intact; open with a Jupyter notebook viewer (JupyterLab/VS Code/PyCharm Jupyter support).
 
 ---
+
 
